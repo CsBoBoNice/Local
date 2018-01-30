@@ -1,7 +1,10 @@
 package CsDir
 
 import (
+	"bytes"
+	"crypto/md5"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,25 +16,25 @@ type Walkdir_i interface {
 	MakeDirs() (err error)
 }
 
-type walkdir_s struct {
-	srcDir   string   //源目录名
-	shareDir string   //共享目录名（将要拷贝到的目录）
-	suffix   string   //按文件后缀查找文件
-	Files    []string //包含文件的目录名
-	Dirs     []string //所有的目录名
-	DirHead  string   //除了要共享的文件外的目录头
-}
-
-func (walkdir *walkdir_s) WalkDirInit(SrcDir string, ShareDir string, Suffix string) {
-	walkdir.srcDir = SrcDir
-	walkdir.shareDir = ShareDir
-	walkdir.suffix = Suffix
-	walkdir.DirHead = getDirHead(walkdir.srcDir)
-
+type Walkdir_s struct {
+	srcDir     string   //源目录名
+	buildDir   string   //需要新建备份文件的目录名
+	suffix     string   //按文件后缀查找文件
+	Files      []string //包含文件的目录名
+	Dirs       []string //所有的目录名
+	TargetDir  []string //不包含文件的目标文件夹
+	TargetFile []string //不包含文件的目标文件夹
+	FileMD5    []string //包含MD5码的文件目录，格式为MD5+TargetFile
+	DirHead    string   //除了要共享的文件外的目录头
 }
 
 //获取指定目录及所有子目录下的所有文件与所有目录，可以匹配后缀过滤。
-func (walkdir *walkdir_s) WalkDirFile() (err error) {
+func (walkdir *Walkdir_s) WalkDirFile(SrcDir string, ShareDir string, Suffix string) (err error) {
+	walkdir.srcDir = SrcDir
+	walkdir.buildDir = ShareDir
+	walkdir.suffix = Suffix
+	walkdir.DirHead = getDirHead(walkdir.srcDir)
+
 	walkdir.Files = make([]string, 0, 30)
 	walkdir.Dirs = make([]string, 0, 30)
 	walkdir.suffix = strings.ToUpper(walkdir.suffix)                                             //忽略后缀匹配的大小写
@@ -49,15 +52,54 @@ func (walkdir *walkdir_s) WalkDirFile() (err error) {
 		}
 		return nil
 	})
+
+	for index, value := range walkdir.Dirs {
+		if index != 0 {
+			walkdir.TargetDir = append(walkdir.TargetDir, GetTargetDir(value, walkdir.DirHead))
+		}
+	}
+
+	for _, value := range walkdir.Files {
+		walkdir.TargetFile = append(walkdir.TargetFile, GetTargetDir(value, walkdir.DirHead))
+	}
+
+	for _, value := range walkdir.Files {
+		walkdir.FileMD5 = append(walkdir.FileMD5, PackFileMD5(value))
+	}
 	return
 }
 
+func PackFileMD5(name string) string {
+	var Md5 [16]byte
+	var buffer bytes.Buffer
+
+	Md5 = GetMD5(name)
+	md5 := Md5[:]
+	buffer.Write(md5)
+	buffer.WriteString(name)
+	return buffer.String()
+}
+
+func UnpackFileMD5(data string) ([16]byte, string) {
+	var buffer bytes.Buffer
+	buffer.WriteString(data)
+	var Md5 [16]byte
+	for i := 0; i < 16; i++ {
+		md5, err := buffer.ReadByte()
+		if err != nil {
+			return Md5, ""
+		}
+		Md5[i] = md5
+	}
+	return Md5, buffer.String()
+}
+
 //将[]string里的目录，去掉DirHead相对路径后在，共享文件夹ShareDir创建出来
-func (walkdir *walkdir_s) MakeDirs() (err error) {
+func (walkdir *Walkdir_s) MakeDirs() (err error) {
 	for index, value := range walkdir.Dirs {
 		//fmt.Println("Index = ", index, "Value = ", value)
 		if index != 0 {
-			dir := GetShareDir(value, walkdir.shareDir, walkdir.DirHead)
+			dir := GetShareDir(value, walkdir.buildDir, walkdir.DirHead)
 			err = MakeDir(dir)
 			if err != nil {
 				return
@@ -116,6 +158,51 @@ func GetShareDir(SrcDir string, ShareDir string, DirHead string) (Dir string) {
 	Dir = ShareDirNew + string(DirTail)
 	return
 }
+
+//获取目标目录
+func GetTargetDir(SrcDir string, DirHead string) (Dir string) {
+	SrcDirByte := []byte(SrcDir)
+	DirHeadLen := len(DirHead)
+	DirTail := SrcDirByte[DirHeadLen:]
+	Dir = string(DirTail)
+	return
+}
+
+//拼接文件夹
+func JointDir(jointDir string, TargetDir string) (Dir string) {
+	jointDirByte := []byte(jointDir)
+	if jointDirByte[len(jointDirByte)-1] != byte('/') || jointDirByte[len(jointDirByte)-1] != byte('\\') { //如果共享文件夹最后一个字符不是'/'或'\'
+		Dir = jointDir + "/" + TargetDir
+	} else {
+		Dir = jointDir + TargetDir
+	}
+	return
+}
+
+//将整个文件读取出来得到文件数据的MD5码
+func GetMD5(name string) (MD5Byte [16]byte) {
+	f, err := os.Open(name)
+	if err != nil {
+		fmt.Println("Open", err)
+		return
+	}
+	defer f.Close()
+	body, err := ioutil.ReadAll(f)
+	if err != nil {
+		fmt.Println("ReadAll", err)
+		return
+	}
+	MD5Byte = md5.Sum(body)
+	return
+}
+
+func DirInit()(SrcDir string, BuildDir string, Suffix string){
+	SrcDir = "E:/golang/gopath/src/github.com/CsBoBoNice/Local"
+	BuildDir = ""
+	Suffix = ""
+	return
+}
+
 func ListFileFunc(p []string) {
 	for index, value := range p {
 		fmt.Println("Index = ", index, "Value = ", value)

@@ -6,7 +6,15 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"fmt"
+	CsDir "github.com/CsBoBoNice/Local/CsDir"
 	"net"
+	"strings"
+	"time"
+)
+
+const (
+	SERVER_NETWORK = "tcp"
+	SERVER_ADDRESS = "127.0.0.1:8085"
 )
 
 type Data struct {
@@ -53,6 +61,21 @@ func Uint64ToByte(i uint64) (date []byte) {
 	return
 }
 
+func printLog(role string, sn int, format string, args ...interface{}) {
+	if !strings.HasSuffix(format, "\n") {
+		format += "\n"
+	}
+	fmt.Printf("%s[%d]: %s", role, sn, fmt.Sprintf(format, args...))
+}
+
+func printServerLog(format string, args ...interface{}) {
+	printLog("Server", 0, format, args...)
+}
+
+func printClientLog(sn int, format string, args ...interface{}) {
+	printLog("Client", sn, format, args...)
+}
+
 func readHead(conn net.Conn) ([]byte, error) {
 	return read(conn, 24)
 }
@@ -81,4 +104,77 @@ func write(conn net.Conn, date []byte) (int, error) {
 	var buffer bytes.Buffer
 	buffer.Write(date)
 	return conn.Write(buffer.Bytes())
+}
+
+//按照协议读取
+func ReadAgreement(conn net.Conn) (buff []byte, err error) {
+	var date Data
+	Headbuff, err := readHead(conn) //读取传输数据头
+	if err != nil {
+		printServerLog("Accept Error: %s", err)
+	}
+
+	date.UnpackData(Headbuff) //解压传输数据头
+
+	date.DataBuff, err = read(conn, date.Datahead.DataSize) //读取真实数据
+	if err != nil {
+		printServerLog("Accept Error: %s", err)
+	}
+
+	MD5Byte := md5.Sum(date.DataBuff)
+	if MD5Byte != date.Datahead.MD5Byte {
+		printServerLog("Accept Error: %s", "发送与接收数据不符")
+		return
+	}
+	buff = date.DataBuff
+	return
+}
+
+//按照协议写入
+func WriteAgreement(conn net.Conn, buff []byte) (err error) {
+	var date Data
+	date.DataBuff = buff
+	date.PackData()
+	_, err = conn.Write(date.DataHeadbuff)
+	if err != nil {
+		printServerLog("Accept Error: %s", err)
+	}
+	_, err = conn.Write(date.DataBuff)
+	if err != nil {
+		printServerLog("Accept Error: %s", err)
+	}
+	return
+}
+
+func serverGo() {
+	var listener net.Listener
+	listener, err := net.Listen(SERVER_NETWORK, SERVER_ADDRESS)
+	if err != nil {
+		printServerLog("Listen Error: %s", err)
+		return
+	}
+	defer listener.Close()
+	printServerLog("Got listener for the server. (local address: %s)", listener.Addr())
+	for {
+		conn, err := listener.Accept() // 阻塞直至新连接到来。
+		if err != nil {
+			printServerLog("Accept Error: %s", err)
+		}
+		printServerLog("Established a connection with a client application. (remote address: %s)",
+			conn.RemoteAddr())
+		go handleConn(conn)
+	}
+}
+
+//服务端有连接处理代码
+func handleConn(conn net.Conn) {
+	for {
+		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		SrcDir, BuildDir, Suffix := CsDir.DirInit()
+		var s_walkdir CsDir.Walkdir_s
+		s_walkdir.WalkDirFile(SrcDir, BuildDir, Suffix)
+		for _, v := range s_walkdir.TargetDir {
+			WriteAgreement(conn, []byte(v))
+		}
+	}
 }

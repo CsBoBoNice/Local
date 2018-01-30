@@ -12,7 +12,7 @@ func TestCsDir(t *testing.T) {
 	Suffix := ""
 
 	var i_Walkdir Walkdir_i
-	var s_walkdir walkdir_s
+	var s_walkdir Walkdir_s
 	i_Walkdir = &s_walkdir
 	s_walkdir.WalkDirInit(SrcDir, ShareDir, Suffix)
 	i_Walkdir.WalkDirFile()
