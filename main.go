@@ -1,17 +1,29 @@
 package main
 
 import (
-	"bytes"
+	// "os"
+	// "bytes"
 	"fmt"
 	CsDir "github.com/CsBoBoNice/Local/CsDir"
-	CsSocket "github.com/CsBoBoNice/Local/CsSocket"
+	// CsSocket "github.com/CsBoBoNice/Local/CsSocket"
 	"runtime"
 )
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	fmt.Println("nice day!")
-	SrcDir, BuildDir, Suffix := CsDir.DirInit()
+	// SrcDir := "E:/go1.jpg"
+	// ok, err := CsDir.PathExists(SrcDir)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// }
+	// if ok {
+	// 	fmt.Println("Path Exists!")
+	// } else {
+	// 	fmt.Println("Path not exist!")
+	// }
+
+	SrcDir, BuildDir, Suffix := CsDir.DirInitLocal()
 
 	var s_walkdir CsDir.Walkdir_s
 	s_walkdir.WalkDirFile(SrcDir, BuildDir, Suffix)
@@ -22,7 +34,7 @@ func main() {
 		md5, name := CsDir.UnpackFileMD5(v)
 		fmt.Println(i, "\t", md5, "\t", name)
 	}
-
+	fmt.Println(len(s_walkdir.FileMD5))
 	// // reader := bufio.NewReader()
 	// reader := bufio.NewScanner()
 	// line, err := reader.ReaderBytes()

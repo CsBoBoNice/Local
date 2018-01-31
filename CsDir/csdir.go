@@ -11,7 +11,7 @@ import (
 )
 
 type Walkdir_i interface {
-	//WalkDirInit(SrcDir string, ShareDir string, Suffix string)
+	//WalkDirInit(SrcDir string, BuildDir string, Suffix string)
 	WalkDirFile() (err error)
 	MakeDirs() (err error)
 }
@@ -29,12 +29,25 @@ type Walkdir_s struct {
 }
 
 //获取指定目录及所有子目录下的所有文件与所有目录，可以匹配后缀过滤。
-func (walkdir *Walkdir_s) WalkDirFile(SrcDir string, ShareDir string, Suffix string) (err error) {
+func (walkdir *Walkdir_s) WalkDirFile(SrcDir string, BuildDir string, Suffix string) (err error) {
 	walkdir.srcDir = SrcDir
-	walkdir.buildDir = ShareDir
+	walkdir.buildDir = BuildDir
 	walkdir.suffix = Suffix
 	walkdir.DirHead = getDirHead(walkdir.srcDir)
 
+	ok, err := PathExists(walkdir.srcDir) //判断需要遍历的目录是否存在
+	// if err != nil { //忽略错误
+	// 	fmt.Println(err)
+	// }
+	if ok { //目录存在
+		fmt.Println("Path Exists!")
+	} else { //目录不存在
+		fmt.Println("Path not exist!")
+		MakeDir(walkdir.srcDir) //目录不存在则创建目录
+		return                  //目录不存在，遍历目录就没有必要了，直接返回
+	}
+
+	//遍历目录
 	walkdir.Files = make([]string, 0, 30)
 	walkdir.Dirs = make([]string, 0, 30)
 	walkdir.suffix = strings.ToUpper(walkdir.suffix)                                             //忽略后缀匹配的大小写
@@ -134,25 +147,25 @@ func getDirHead(name string) (DirHead string) {
 
 /*将需要共享的文件名转换成特定格式
 SrcDir 共享的文件名,绝对路径
-ShareDir 共享目录
+BuildDir 共享目录
 DirHead 除了要共享的文件夹外，前面的性对路径头
 
 Dir 返回值 是要共享的目录的纯目录
 */
-func GetShareDir(SrcDir string, ShareDir string, DirHead string) (Dir string) {
+func GetShareDir(SrcDir string, BuildDir string, DirHead string) (Dir string) {
 	var ShareDirNew string
 
 	SrcDirByte := []byte(SrcDir)
-	ShareDirByte := []byte(ShareDir)
+	ShareDirByte := []byte(BuildDir)
 	DirHeadLen := len(DirHead)
 
 	DirTail := SrcDirByte[DirHeadLen:]
 
-	if len(ShareDir) > 0 {
+	if len(BuildDir) > 0 {
 		if ShareDirByte[len(ShareDirByte)-1] != byte('/') { //如果共享文件夹最后一个字符不是'/'
-			ShareDirNew = ShareDir + "/"
+			ShareDirNew = BuildDir + "/"
 		} else {
-			ShareDirNew = ShareDir
+			ShareDirNew = BuildDir
 		}
 	}
 	Dir = ShareDirNew + string(DirTail)
@@ -196,7 +209,30 @@ func GetMD5(name string) (MD5Byte [16]byte) {
 	return
 }
 
-func DirInit()(SrcDir string, BuildDir string, Suffix string){
+//判断文件或目录是否存在
+//如果路径存在返回false，不存在返回nil
+//不知道路径是否存在err!=nil
+func PathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+//本地的文件夹初始化
+func DirInitLocal() (SrcDir string, BuildDir string, Suffix string) {
+	SrcDir = "E:/golang/gopath/src/github.com/CsBoBoNice/Local"
+	BuildDir = ""
+	Suffix = ""
+	return
+}
+
+//远端的文件夹初始化
+func DirInitRemote() (SrcDir string, BuildDir string, Suffix string) {
 	SrcDir = "E:/golang/gopath/src/github.com/CsBoBoNice/Local"
 	BuildDir = ""
 	Suffix = ""

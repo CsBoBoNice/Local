@@ -170,11 +170,32 @@ func serverGo() {
 func handleConn(conn net.Conn) {
 	for {
 		conn.SetDeadline(time.Now().Add(10 * time.Second))
-		SrcDir, BuildDir, Suffix := CsDir.DirInit()
+		SrcDir, BuildDir, Suffix := CsDir.DirInitLocal() //初始化本地读取文件夹，远端创建的文件夹，还有要查找的文件后缀
 		var s_walkdir CsDir.Walkdir_s
-		s_walkdir.WalkDirFile(SrcDir, BuildDir, Suffix)
+		s_walkdir.WalkDirFile(SrcDir, BuildDir, Suffix) //遍历本地目录
 		for _, v := range s_walkdir.TargetDir {
-			WriteAgreement(conn, []byte(v))
+			WriteAgreement(conn, []byte(v)) //将本地的所有目标目录发给远端
 		}
 	}
+}
+
+func clientGo(id int) {
+	// //向指定的网络地址发送链接建立申请，并堵塞一段时间，超时则err!=nil
+	// conn, err := net.DialTimeout(SERVER_NETWORK, SERVER_ADDRESS, 2*time.Second)
+	// if err != nil {
+	// 	printClientLog(id, "Dial Error: %s", err)
+	// 	return
+	// }
+	// defer conn.Close()
+	// printClientLog(id, "Connected to server. (remote address: %s, local address: %s)",
+	// 	conn.RemoteAddr(), conn.LocalAddr())
+
+	// SrcDir, BuildDir, Suffix := CsDir.DirInitRemote() //初始化本地读取文件夹，远端创建的文件夹，还有要查找的文件后缀
+
+	// var s_walkdir CsDir.Walkdir_s
+	// var s_readWalkdir CsDir.Walkdir_s
+	// s_walkdir.WalkDirFile(SrcDir, BuildDir, Suffix) //遍历本地目录
+	// buff, err := ReadAgreement(conn)
+
+	// s_readWalkdir.TargetDir=
 }
