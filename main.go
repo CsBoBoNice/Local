@@ -30,11 +30,21 @@ func main() {
 	fmt.Println(s_walkdir.DirHead)
 	// fmt.Println(s_walkdir.FileMD5)
 
-	for i, v := range s_walkdir.FileMD5 {
-		md5, name := CsDir.UnpackFileMD5(v)
-		fmt.Println(i, "\t", md5, "\t", name)
-	}
-	fmt.Println(len(s_walkdir.FileMD5))
+	// for i, v := range s_walkdir.FileMD5 {
+	// 	md5, name := CsDir.UnpackFileMD5(v)
+	// 	fmt.Println(i, "\n", md5, "\n", name, "\n", len(v), "\n")
+	// }
+	// fmt.Println(len(s_walkdir.FileMD5))
+
+	byteDate := CsDir.PackSliceString(s_walkdir.Files)
+	// fmt.Printf("%s", byteDate)
+	// fmt.Println(len(byteDate))
+	stringDate := CsDir.UnpackSliceString(byteDate)
+	// fmt.Println(stringDate)
+	fmt.Println(stringDate[1] == s_walkdir.Files[1])
+
+	// CsDir.ContrastDir(local, Backup)
+
 	// // reader := bufio.NewReader()
 	// reader := bufio.NewScanner()
 	// line, err := reader.ReaderBytes()
@@ -85,5 +95,5 @@ func scanfExit(chanServer chan string) {
 		}
 	}
 
-	fmt.Printf("nice day~\n")
+	// fmt.Printf("nice day~\n")
 }

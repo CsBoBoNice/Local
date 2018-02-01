@@ -3,6 +3,7 @@ package CsDir
 import (
 	"bytes"
 	"crypto/md5"
+	"encoding/binary"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -82,6 +83,81 @@ func (walkdir *Walkdir_s) WalkDirFile(SrcDir string, BuildDir string, Suffix str
 	return
 }
 
+func ByteToByte(add []byte, too []byte) []byte {
+	for _, v := range too {
+		add = append(add, v)
+	}
+	return add
+}
+
+func PackSliceString(buff []string) []byte {
+	var buffer bytes.Buffer
+	var TotalNum uint64
+	var lenNum uint64
+	TotalNum = uint64(len(buff))
+
+	buffer.Write(Uint64ToByte(TotalNum))
+
+	for _, v := range buff {
+		lenNum = uint64(len(v))
+		buffer.Write(Uint64ToByte(lenNum))
+		// fmt.Printf("每条数据长度：%d\n", lenNum)
+	}
+	for _, v := range buff {
+		buffer.Write([]byte(v))
+	}
+	// Date = buffer.Bytes()
+	return buffer.Bytes()
+}
+
+func UnpackSliceString(buff []byte) (SliceString []string) {
+	var TotalNum uint64  //string切片总数
+	var lenNum uint64    //每条string字节数
+	var scaler uint64    //循环计数器
+	var LenBuff []uint64 //每条string字节数数组
+	var bufflen uint64   //总数据长度
+	var headLen uint64   //非真正数据片段的数据头
+	scaler = 0
+	bufflen = uint64(len(buff))
+	TotalNum = ByteToUint64(buff)
+	headLen = (TotalNum + 1) * 8 //因为数据头每个数据都是uint64,64位为8个字节
+	if bufflen < headLen {       //如果总数据比 每条string字节数数组 数据还要少return
+		return
+	}
+	// fmt.Printf("数组总数：%d\n", TotalNum)
+	LenbuffByte := buff[8 : 8*(TotalNum+1)]  //将只含有每条string字节数的数据片段切割出来
+	SliceBuff := buff[(8 * (TotalNum + 1)):] //将含有真正的数据片段切割出来
+	for i := 0; i < int(TotalNum); i++ {
+		lenNum = ByteToUint64(LenbuffByte[i*8:])
+		LenBuff = append(LenBuff, lenNum)
+		scaler = scaler + lenNum
+		// fmt.Printf("每条数据长度：%d\n", lenNum)
+	}
+	if bufflen != scaler+headLen { //如果总数据字节数和要解析的字节数不符，return
+		return
+	}
+	scaler = 0
+	for _, v := range LenBuff {
+		SliceString = append(SliceString, string(SliceBuff[scaler:scaler+v]))
+		scaler = scaler + v
+	}
+
+	return
+}
+
+func ByteToUint64(date []byte) (i uint64) {
+	i = binary.BigEndian.Uint64(date[0:8])
+
+	// fmt.Println(i)
+	return
+}
+
+func Uint64ToByte(i uint64) (date []byte) {
+	date = make([]byte, 8)
+	binary.BigEndian.PutUint64(date, uint64(i))
+	return
+}
+
 func PackFileMD5(name string) string {
 	var Md5 [16]byte
 	var buffer bytes.Buffer
@@ -118,17 +194,6 @@ func (walkdir *Walkdir_s) MakeDirs() (err error) {
 				return
 			}
 		}
-	}
-	return
-}
-
-//创建目录
-func MakeDir(name string) (err error) {
-	err = os.MkdirAll(name, 0777)
-	if err != nil {
-		fmt.Printf("%s\n", err)
-	} else {
-		// fmt.Print("Create Directory OK!\n")
 	}
 	return
 }
@@ -221,6 +286,89 @@ func PathExists(path string) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+//创建目录
+func MakeDir(name string) (err error) {
+	err = os.MkdirAll(name, 0777)
+	if err != nil {
+		fmt.Printf("%s\n", err)
+	} else {
+		// fmt.Print("Create Directory OK!\n")
+	}
+	return
+}
+
+//删除文件或目录
+func DeleteDir(name string) (err error) {
+	os.RemoveAll(name)
+	if err != nil {
+		fmt.Printf("%s\n", err)
+	} else {
+		// fmt.Print("Create Directory OK!\n")
+	}
+	return
+}
+
+//对比本地目录与远端目录，以发送过来的远端目录为基准，将多余的，目录删除，不足的目录新建
+func ContrastDir(Local []string, Backup []string) {
+	var identical []string
+	for _, v := range Backup {
+		for j, va := range Local {
+			if va == v {
+				Local = append(Local[:j], Local[j+1:]...) //将相同的目录删除，这样本地目录就只剩下需要删除的目录了
+				identical = append(identical, v)          //相同目录的保存到identical中
+				break
+			}
+		}
+	}
+	for _, v := range identical {
+		for j, va := range Backup {
+			if va == v {
+				Backup = append(Backup[:j], Backup[j+1:]...) //将本地目录与相同目录切片里的数据去掉，这样远程目录就只剩下需要创建的目录了
+				break
+			}
+		}
+	}
+	for _, v := range Local {
+		DeleteDir(v)
+	}
+	for _, v := range Backup {
+		MakeDir(v)
+	}
+}
+
+func ContrastDirMD5(Local []string, Backup []string) (Dir []string) {
+	var identical []string
+	// var md5 [16]byte
+	var dir string
+	for _, v := range Backup {
+		for j, va := range Local {
+			if va == v {
+				Local = append(Local[:j], Local[j+1:]...) //将相同的目录去掉，这样本地目录就只剩下需要删除的目录了
+				identical = append(identical, v)          //相同目录的保存到identical中
+				break
+			}
+		}
+	}
+	for _, v := range identical {
+		for j, va := range Backup {
+			if va == v {
+				Backup = append(Backup[:j], Backup[j+1:]...) //将本地目录与相同目录切片里的数据去掉，这样远程目录就只剩下需要创建的目录了
+				break
+			}
+		}
+	}
+	for _, v := range Local {
+		_, dir = UnpackFileMD5(v)
+		DeleteDir(dir)
+	}
+
+	for _, v := range Backup {
+		_, dir = UnpackFileMD5(v)
+		Dir = append(Dir, dir) //将需要远端发送过来的目录保存到Dir里
+	}
+	return
 }
 
 //本地的文件夹初始化

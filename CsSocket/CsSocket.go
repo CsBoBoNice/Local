@@ -38,7 +38,7 @@ func (Datas *Data) PackData() {
 	for _, r := range Datas.Datahead.MD5Byte {
 		Datas.DataHeadbuff = append(Datas.DataHeadbuff, r)
 	}
-	fmt.Println(Datas.DataHeadbuff)
+	// fmt.Println(Datas.DataHeadbuff)
 }
 
 func (Datas *Data) UnpackData(date []byte) {
@@ -171,31 +171,51 @@ func handleConn(conn net.Conn) {
 	for {
 		conn.SetDeadline(time.Now().Add(10 * time.Second))
 		SrcDir, BuildDir, Suffix := CsDir.DirInitLocal() //初始化本地读取文件夹，远端创建的文件夹，还有要查找的文件后缀
-		var s_walkdir CsDir.Walkdir_s
-		s_walkdir.WalkDirFile(SrcDir, BuildDir, Suffix) //遍历本地目录
-		for _, v := range s_walkdir.TargetDir {
-			WriteAgreement(conn, []byte(v)) //将本地的所有目标目录发给远端
-		}
+		var local CsDir.Walkdir_s
+		local.WalkDirFile(SrcDir, BuildDir, Suffix)                  //遍历本地目录
+		WriteAgreement(conn, CsDir.PackSliceString(local.TargetDir)) //将本地的所有目标目录发给远端
+
+		WriteAgreement(conn, CsDir.PackSliceString(local.FileMD5)) //将本地的 包含MD5码的文件目录 发给远端
+
+		// dir, err := ReadAgreement(conn)     //接收远端的所有目标文件目录
+		// Dir := CsDir.UnpackSliceString(dir) //解析出所有目标文件目录FileMD5
+
 	}
 }
 
 func clientGo(id int) {
-	// //向指定的网络地址发送链接建立申请，并堵塞一段时间，超时则err!=nil
-	// conn, err := net.DialTimeout(SERVER_NETWORK, SERVER_ADDRESS, 2*time.Second)
-	// if err != nil {
-	// 	printClientLog(id, "Dial Error: %s", err)
-	// 	return
-	// }
-	// defer conn.Close()
-	// printClientLog(id, "Connected to server. (remote address: %s, local address: %s)",
-	// 	conn.RemoteAddr(), conn.LocalAddr())
+	//向指定的网络地址发送链接建立申请，并堵塞一段时间，超时则err!=nil
+	conn, err := net.DialTimeout(SERVER_NETWORK, SERVER_ADDRESS, 2*time.Second)
+	if err != nil {
+		printClientLog(id, "Dial Error: %s", err)
+		return
+	}
+	defer conn.Close()
+	printClientLog(id, "Connected to server. (remote address: %s, local address: %s)",
+		conn.RemoteAddr(), conn.LocalAddr())
 
-	// SrcDir, BuildDir, Suffix := CsDir.DirInitRemote() //初始化本地读取文件夹，远端创建的文件夹，还有要查找的文件后缀
+	//初始化本地读取文件夹，远端创建的文件夹，还有要查找的文件后缀
+	SrcDir, BuildDir, Suffix := CsDir.DirInitRemote()
 
-	// var s_walkdir CsDir.Walkdir_s
-	// var s_readWalkdir CsDir.Walkdir_s
-	// s_walkdir.WalkDirFile(SrcDir, BuildDir, Suffix) //遍历本地目录
-	// buff, err := ReadAgreement(conn)
+	var local CsDir.Walkdir_s
+	var Backup CsDir.Walkdir_s
+	local.WalkDirFile(SrcDir, BuildDir, Suffix) //遍历本地目录
 
-	// s_readWalkdir.TargetDir=
+	targetDir, err := ReadAgreement(conn)                 //接收远端的所有目标目录
+	Backup.TargetDir = CsDir.UnpackSliceString(targetDir) //解析出所有目标目录
+
+	//对比本地目录与远端目录，以发送过来的远端目录为基准，将多余的，目录删除，不足的目录新建
+	CsDir.ContrastDir(local.TargetDir, Backup.TargetDir)
+
+	local.WalkDirFile(SrcDir, BuildDir, Suffix) //遍历本地目录
+
+	targetFile, err := ReadAgreement(conn)               //接收远端的所有目标文件目录
+	Backup.FileMD5 = CsDir.UnpackSliceString(targetFile) //解析出所有目标文件目录FileMD5
+
+	//解析出包含MD5码的文件目录，格式为MD5+TargetFile
+	//将没有匹配文件的 与 MD5码与文件不同的目录找出
+	Dir := CsDir.ContrastDirMD5(local.FileMD5, Backup.FileMD5)
+
+	WriteAgreement(conn, CsDir.PackSliceString(Dir)) //将没有匹配文件的 与 MD5码与文件不同的目录找出发给远端
+
 }
