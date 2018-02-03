@@ -41,9 +41,9 @@ func (walkdir *Walkdir_s) WalkDirFile(SrcDir string, BuildDir string, Suffix str
 	// 	fmt.Println(err)
 	// }
 	if ok { //目录存在
-		fmt.Println("Path Exists!")
+		// fmt.Printf("%s目录存在!\n", walkdir.srcDir)
 	} else { //目录不存在
-		fmt.Println("Path not exist!")
+		fmt.Printf("%s目录不存在!\n", walkdir.srcDir)
 		MakeDir(walkdir.srcDir) //目录不存在则创建目录
 		return                  //目录不存在，遍历目录就没有必要了，直接返回
 	}
@@ -67,10 +67,10 @@ func (walkdir *Walkdir_s) WalkDirFile(SrcDir string, BuildDir string, Suffix str
 		return nil
 	})
 
-	for index, value := range walkdir.Dirs {
-		if index != 0 {
-			walkdir.TargetDir = append(walkdir.TargetDir, GetTargetDir(value, walkdir.DirHead))
-		}
+	for _, value := range walkdir.Dirs {
+		// if index != 0 {
+		walkdir.TargetDir = append(walkdir.TargetDir, GetTargetDir(value, walkdir.DirHead))
+		// }
 	}
 
 	for _, value := range walkdir.Files {
@@ -78,7 +78,7 @@ func (walkdir *Walkdir_s) WalkDirFile(SrcDir string, BuildDir string, Suffix str
 	}
 
 	for _, value := range walkdir.Files {
-		walkdir.FileMD5 = append(walkdir.FileMD5, PackFileMD5(value))
+		walkdir.FileMD5 = append(walkdir.FileMD5, PackFileMD5(value, walkdir.DirHead))
 	}
 	return
 }
@@ -158,14 +158,14 @@ func Uint64ToByte(i uint64) (date []byte) {
 	return
 }
 
-func PackFileMD5(name string) string {
+func PackFileMD5(SrcDir string, DirHead string) string {
 	var Md5 [16]byte
 	var buffer bytes.Buffer
 
-	Md5 = GetMD5(name)
+	Md5 = GetMD5(SrcDir)
 	md5 := Md5[:]
 	buffer.Write(md5)
-	buffer.WriteString(name)
+	buffer.WriteString(GetTargetDir(SrcDir, DirHead))
 	return buffer.String()
 }
 
@@ -249,7 +249,8 @@ func GetTargetDir(SrcDir string, DirHead string) (Dir string) {
 //拼接文件夹
 func JointDir(jointDir string, TargetDir string) (Dir string) {
 	jointDirByte := []byte(jointDir)
-	if jointDirByte[len(jointDirByte)-1] != byte('/') || jointDirByte[len(jointDirByte)-1] != byte('\\') { //如果共享文件夹最后一个字符不是'/'或'\'
+	var va byte = '\\'
+	if jointDirByte[len(jointDirByte)-1] != byte('/') || jointDirByte[len(jointDirByte)-1] != va { //如果共享文件夹最后一个字符不是'/'或'\'
 		Dir = jointDir + "/" + TargetDir
 	} else {
 		Dir = jointDir + TargetDir
@@ -271,6 +272,44 @@ func GetMD5(name string) (MD5Byte [16]byte) {
 		return
 	}
 	MD5Byte = md5.Sum(body)
+	return
+}
+
+//得到文件的全部字节
+func ReadFileAll(name string) (date []byte) {
+	f, err := os.Open(name)
+	if err != nil {
+		fmt.Println("Open", err)
+		return
+	}
+	defer f.Close()
+	date, err = ioutil.ReadAll(f)
+	if err != nil {
+		fmt.Println("ReadAll", err)
+		return
+	}
+	return
+}
+
+//函数功能：写入文件
+//参数：1，写入的文件名，2，写入的数据 3，写入的字节数
+//返回值：1，是否出错
+func WriteFileAll(name string, buff []byte) (err error) {
+
+	var num int
+	fo, err := os.Create(name) //创建输出*File 写文件
+	if err != nil {
+		panic(err)
+	}
+	defer fo.Close() //退出后关闭文件
+
+	fmt.Printf("写入到%s\t", name)
+	num, err = fo.Write(buff)
+	if err != nil { //写入output.txt,直到错误 写文件
+		panic(err)
+	}
+	fmt.Printf("写入大小=%fMB\n", float64(num)/1024/1024)
+
 	return
 }
 
@@ -305,13 +344,13 @@ func DeleteDir(name string) (err error) {
 	if err != nil {
 		fmt.Printf("%s\n", err)
 	} else {
-		// fmt.Print("Create Directory OK!\n")
+		fmt.Printf("删除文件%s\n", name)
 	}
 	return
 }
 
 //对比本地目录与远端目录，以发送过来的远端目录为基准，将多余的，目录删除，不足的目录新建
-func ContrastDir(Local []string, Backup []string) {
+func ContrastDir(Local []string, Backup []string, DirHead string) {
 	var identical []string
 	for _, v := range Backup {
 		for j, va := range Local {
@@ -331,14 +370,14 @@ func ContrastDir(Local []string, Backup []string) {
 		}
 	}
 	for _, v := range Local {
-		DeleteDir(v)
+		DeleteDir(JointDir(DirHead, v))
 	}
 	for _, v := range Backup {
-		MakeDir(v)
+		MakeDir(JointDir(DirHead, v))
 	}
 }
 
-func ContrastDirMD5(Local []string, Backup []string) (Dir []string) {
+func ContrastDirMD5(Local []string, Backup []string, DirHead string) (Dir []string) {
 	var identical []string
 	// var md5 [16]byte
 	var dir string
@@ -361,7 +400,7 @@ func ContrastDirMD5(Local []string, Backup []string) (Dir []string) {
 	}
 	for _, v := range Local {
 		_, dir = UnpackFileMD5(v)
-		DeleteDir(dir)
+		DeleteDir(JointDir(DirHead, dir))
 	}
 
 	for _, v := range Backup {
@@ -373,7 +412,7 @@ func ContrastDirMD5(Local []string, Backup []string) (Dir []string) {
 
 //本地的文件夹初始化
 func DirInitLocal() (SrcDir string, BuildDir string, Suffix string) {
-	SrcDir = "E:/golang/gopath/src/github.com/CsBoBoNice/Local"
+	SrcDir = "F:/Test/Local"
 	BuildDir = ""
 	Suffix = ""
 	return
@@ -381,10 +420,17 @@ func DirInitLocal() (SrcDir string, BuildDir string, Suffix string) {
 
 //远端的文件夹初始化
 func DirInitRemote() (SrcDir string, BuildDir string, Suffix string) {
-	SrcDir = "E:/golang/gopath/src/github.com/CsBoBoNice/Local"
+	SrcDir = "F:/Test/Backup"
 	BuildDir = ""
 	Suffix = ""
 	return
+}
+
+func ListMD5File(p []string) {
+	for index, value := range p {
+		// fmt.Println("Index = ", index, "Value = ", value)
+		fmt.Printf("I=%d\t%v\t%s\n", index, []byte(value)[:16], string([]byte(value[16:])))
+	}
 }
 
 func ListFileFunc(p []string) {

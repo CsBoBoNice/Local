@@ -51,7 +51,7 @@ func (Datas *Data) UnpackData(date []byte) {
 
 func ByteToUint64(date []byte) (i uint64) {
 	i = uint64(binary.BigEndian.Uint64(date[0:8]))
-	fmt.Println(i)
+	// fmt.Println(i)
 	return
 }
 
@@ -146,7 +146,7 @@ func WriteAgreement(conn net.Conn, buff []byte) (err error) {
 	return
 }
 
-func serverGo() {
+func ServerGo() {
 	var listener net.Listener
 	listener, err := net.Listen(SERVER_NETWORK, SERVER_ADDRESS)
 	if err != nil {
@@ -169,21 +169,29 @@ func serverGo() {
 //服务端有连接处理代码
 func handleConn(conn net.Conn) {
 	for {
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		conn.SetDeadline(time.Now().Add(15 * time.Second))
 		SrcDir, BuildDir, Suffix := CsDir.DirInitLocal() //初始化本地读取文件夹，远端创建的文件夹，还有要查找的文件后缀
+		
 		var local CsDir.Walkdir_s
 		local.WalkDirFile(SrcDir, BuildDir, Suffix)                  //遍历本地目录
 		WriteAgreement(conn, CsDir.PackSliceString(local.TargetDir)) //将本地的所有目标目录发给远端
 
 		WriteAgreement(conn, CsDir.PackSliceString(local.FileMD5)) //将本地的 包含MD5码的文件目录 发给远端
 
-		// dir, err := ReadAgreement(conn)     //接收远端的所有目标文件目录
-		// Dir := CsDir.UnpackSliceString(dir) //解析出所有目标文件目录FileMD5
+		dir, _ := ReadAgreement(conn)       //接收远端的所有目标文件目录
+		Dir := CsDir.UnpackSliceString(dir) //解析出所有目标文件目录FileMD5
 
+		// WriteAgreement(conn, []byte("Start the transfer file!")) //将开始标志发给远端
+		for _, v := range Dir {
+			WriteAgreement(conn, []byte(v))                                           //将文件目录发给远端
+			WriteAgreement(conn, CsDir.ReadFileAll(CsDir.JointDir(local.DirHead, v))) //将文件数据发给远端
+		}
+		WriteAgreement(conn, []byte("The transfer file is finished!")) //将结束标志发给远端
+		return
 	}
 }
 
-func clientGo(id int) {
+func ClientGo(id int) {
 	//向指定的网络地址发送链接建立申请，并堵塞一段时间，超时则err!=nil
 	conn, err := net.DialTimeout(SERVER_NETWORK, SERVER_ADDRESS, 2*time.Second)
 	if err != nil {
@@ -199,23 +207,39 @@ func clientGo(id int) {
 
 	var local CsDir.Walkdir_s
 	var Backup CsDir.Walkdir_s
-	local.WalkDirFile(SrcDir, BuildDir, Suffix) //遍历本地目录
+	var LocalNow CsDir.Walkdir_s
 
 	targetDir, err := ReadAgreement(conn)                 //接收远端的所有目标目录
 	Backup.TargetDir = CsDir.UnpackSliceString(targetDir) //解析出所有目标目录
 
-	//对比本地目录与远端目录，以发送过来的远端目录为基准，将多余的，目录删除，不足的目录新建
-	CsDir.ContrastDir(local.TargetDir, Backup.TargetDir)
+	SrcDirNow := CsDir.JointDir(SrcDir, Backup.TargetDir[0])
+	local.WalkDirFile(SrcDirNow, BuildDir, Suffix) //遍历本地目录
 
-	local.WalkDirFile(SrcDir, BuildDir, Suffix) //遍历本地目录
+	//对比本地目录与远端目录，以发送过来的远端目录为基准，将多余的，目录删除，不足的目录新建
+	CsDir.ContrastDir(local.TargetDir, Backup.TargetDir, local.DirHead)
+
+	LocalNow.WalkDirFile(SrcDirNow, BuildDir, Suffix) //遍历本地目录
 
 	targetFile, err := ReadAgreement(conn)               //接收远端的所有目标文件目录
 	Backup.FileMD5 = CsDir.UnpackSliceString(targetFile) //解析出所有目标文件目录FileMD5
 
 	//解析出包含MD5码的文件目录，格式为MD5+TargetFile
 	//将没有匹配文件的 与 MD5码与文件不同的目录找出
-	Dir := CsDir.ContrastDirMD5(local.FileMD5, Backup.FileMD5)
+	Dir := CsDir.ContrastDirMD5(LocalNow.FileMD5, Backup.FileMD5, LocalNow.DirHead)
 
 	WriteAgreement(conn, CsDir.PackSliceString(Dir)) //将没有匹配文件的 与 MD5码与文件不同的目录找出发给远端
+	var dirName string
+	for {
+		dast, _ := ReadAgreement(conn) //接收数据
+		if string(dast) == "The transfer file is finished!" {
+			break
+		}
+
+		dirName = CsDir.JointDir(SrcDir, string(dast))
+		dast, _ = ReadAgreement(conn) //接收数据
+		CsDir.WriteFileAll(dirName, dast)
+	}
+
+	printClientLog(id, "Client close. (remote address: %s)", conn.LocalAddr())
 
 }
