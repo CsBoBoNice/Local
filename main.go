@@ -17,7 +17,7 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	chanServer := make(chan string)
-	
+
 	fmt.Println("nice day!")
 	go CsSocket.ServerGo(SERVER_NETWORK, SERVER_ADDRESS)
 	time.Sleep(500 * time.Millisecond)
@@ -25,7 +25,7 @@ func main() {
 
 	go scanfExit(chanServer)
 	<-chanServer
-	fmt.Println("	<-chanServer")
+	fmt.Println("任务完成")
 	// time.Sleep(10 * time.Second)
 
 }

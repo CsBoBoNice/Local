@@ -7,6 +7,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	CsDir "github.com/CsBoBoNice/Local/CsDir"
+	"io"
+	"log"
 	"net"
 	"strings"
 	"time"
@@ -85,23 +87,47 @@ func readHead(conn net.Conn) ([]byte, error) {
 	return read(conn, 24)
 }
 
+// func read(conn net.Conn, num uint64) ([]byte, error) {
+// 	readBytes := make([]byte, 1)
+// 	var buffer bytes.Buffer
+// 	var readSize uint64 = 0
+// 	for {
+// 		_, err := conn.Read(readBytes)
+// 		if err != nil {
+// 			return buffer.Bytes(), err
+// 		} else {
+// 			readSize++
+// 		}
+// 		readByte := readBytes[0]
+// 		buffer.WriteByte(readByte)
+// 		if readSize >= num {
+// 			break
+// 		}
+// 	}
+// 	return buffer.Bytes(), nil
+// }
+
 func read(conn net.Conn, num uint64) ([]byte, error) {
-	readBytes := make([]byte, 1)
+	readBytes := make([]byte, int(num)) //2G内存
 	var buffer bytes.Buffer
 	var readSize uint64 = 0
 	for {
-		_, err := conn.Read(readBytes)
-		if err != nil {
+		n, err := conn.Read(readBytes[:int(num-readSize)])
+		if err != nil && err != io.EOF { //io.EOF在网络编程中表示对端把链接关闭了。
+			log.Fatal(err)
 			return buffer.Bytes(), err
-		} else {
-			readSize++
 		}
-		readByte := readBytes[0]
-		buffer.WriteByte(readByte)
-		if readSize >= num {
-			break
+		if n > 0 {
+			// fmt.Printf("\t 接收到 %d\t 还差 %d\n", n, (num - readSize))
+			buffer.Write(readBytes[:n])
+			readSize = readSize + uint64(n)
+			if uint64(readSize) >= num {
+				// fmt.Printf("接收正确\n")
+				break
+			}
 		}
 	}
+
 	return buffer.Bytes(), nil
 }
 
@@ -313,7 +339,7 @@ func ClientGo(id int, network string, address string) {
 
 	var dirName string
 	for {
-		dast, _ := ReadAgreement(conn)                        //接收数据
+		dast, _ := ReadAgreement(conn)                        //接收目录
 		if string(dast) == "The transfer file is finished!" { //是否已经发送完毕
 			printClientLog(id, "接收完毕，关闭连接")
 			break
