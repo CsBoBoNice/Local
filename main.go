@@ -8,13 +8,25 @@ import (
 	"runtime"
 )
 
+const (
+	SERVER_NETWORK = "tcp"
+	SERVER_ADDRESS = "192.168.31.67:8085"
+)
+
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
+
+	chanServer := make(chan string)
+	
 	fmt.Println("nice day!")
-	go CsSocket.ServerGo()
+	go CsSocket.ServerGo(SERVER_NETWORK, SERVER_ADDRESS)
 	time.Sleep(500 * time.Millisecond)
-	go CsSocket.ClientGo(1)
-	time.Sleep(10 * time.Second)
+	go CsSocket.ClientGo(1, SERVER_NETWORK, SERVER_ADDRESS)
+
+	go scanfExit(chanServer)
+	<-chanServer
+	fmt.Println("	<-chanServer")
+	// time.Sleep(10 * time.Second)
 
 }
 

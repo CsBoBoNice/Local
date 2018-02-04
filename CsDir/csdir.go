@@ -12,14 +12,13 @@ import (
 )
 
 type Walkdir_i interface {
-	//WalkDirInit(SrcDir string, BuildDir string, Suffix string)
 	WalkDirFile() (err error)
 	MakeDirs() (err error)
 }
 
 type Walkdir_s struct {
-	srcDir     string   //源目录名
-	buildDir   string   //需要新建备份文件的目录名
+	srcDir string //源目录名
+	// buildDir   string   //需要新建备份文件的目录名
 	suffix     string   //按文件后缀查找文件
 	Files      []string //包含文件的目录名
 	Dirs       []string //所有的目录名
@@ -30,11 +29,11 @@ type Walkdir_s struct {
 }
 
 //获取指定目录及所有子目录下的所有文件与所有目录，可以匹配后缀过滤。
-func (walkdir *Walkdir_s) WalkDirFile(SrcDir string, BuildDir string, Suffix string) (err error) {
+func (walkdir *Walkdir_s) WalkDirFile(SrcDir string, Suffix string) (err error) {
 	walkdir.srcDir = SrcDir
-	walkdir.buildDir = BuildDir
+	// walkdir.buildDir = BuildDir
 	walkdir.suffix = Suffix
-	walkdir.DirHead = getDirHead(walkdir.srcDir)
+	walkdir.DirHead = GetDirHead(walkdir.srcDir)
 
 	ok, err := PathExists(walkdir.srcDir) //判断需要遍历的目录是否存在
 	// if err != nil { //忽略错误
@@ -183,23 +182,8 @@ func UnpackFileMD5(data string) ([16]byte, string) {
 	return Md5, buffer.String()
 }
 
-//将[]string里的目录，去掉DirHead相对路径后在，共享文件夹ShareDir创建出来
-func (walkdir *Walkdir_s) MakeDirs() (err error) {
-	for index, value := range walkdir.Dirs {
-		//fmt.Println("Index = ", index, "Value = ", value)
-		if index != 0 {
-			dir := GetShareDir(value, walkdir.buildDir, walkdir.DirHead)
-			err = MakeDir(dir)
-			if err != nil {
-				return
-			}
-		}
-	}
-	return
-}
-
 //将共享路径头提取出来
-func getDirHead(name string) (DirHead string) {
+func GetDirHead(name string) (DirHead string) {
 	catstring := filepath.Dir(name) //filepath.Dir可以将最后一个文件夹去掉
 	// fmt.Println("bi", name)
 	// fmt.Println("bo", catstring)
@@ -207,33 +191,6 @@ func getDirHead(name string) (DirHead string) {
 	catByte := []byte(catstring)
 	DirLen := len(catByte) + 1 //加1的目的是去掉'/'
 	DirHead = string(srcString[:DirLen])
-	return
-}
-
-/*将需要共享的文件名转换成特定格式
-SrcDir 共享的文件名,绝对路径
-BuildDir 共享目录
-DirHead 除了要共享的文件夹外，前面的性对路径头
-
-Dir 返回值 是要共享的目录的纯目录
-*/
-func GetShareDir(SrcDir string, BuildDir string, DirHead string) (Dir string) {
-	var ShareDirNew string
-
-	SrcDirByte := []byte(SrcDir)
-	ShareDirByte := []byte(BuildDir)
-	DirHeadLen := len(DirHead)
-
-	DirTail := SrcDirByte[DirHeadLen:]
-
-	if len(BuildDir) > 0 {
-		if ShareDirByte[len(ShareDirByte)-1] != byte('/') { //如果共享文件夹最后一个字符不是'/'
-			ShareDirNew = BuildDir + "/"
-		} else {
-			ShareDirNew = BuildDir
-		}
-	}
-	Dir = ShareDirNew + string(DirTail)
 	return
 }
 
@@ -303,7 +260,7 @@ func WriteFileAll(name string, buff []byte) (err error) {
 	}
 	defer fo.Close() //退出后关闭文件
 
-	fmt.Printf("写入到%s\t", name)
+	fmt.Printf("\t写入到%s\t", name)
 	num, err = fo.Write(buff)
 	if err != nil { //写入output.txt,直到错误 写文件
 		panic(err)
@@ -314,7 +271,7 @@ func WriteFileAll(name string, buff []byte) (err error) {
 }
 
 //判断文件或目录是否存在
-//如果路径存在返回false，不存在返回nil
+//如果路径存在返回true，不存在返回false
 //不知道路径是否存在err!=nil
 func PathExists(path string) (bool, error) {
 	_, err := os.Stat(path)
@@ -325,6 +282,20 @@ func PathExists(path string) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+//判断是否是文件夹
+//如果是文件夹返回true，不存在返回false
+//不知道路径是否存在err!=nil
+func IsDir(path string) (bool, error) {
+	ok, err := PathExists(path) //先判断文件或目录是否存在
+	if ok != true {
+		return false, err
+	}
+	f, _ := os.Stat(path) //再判断是否是文件夹
+	isDir := f.IsDir()
+	err = nil
+	return isDir, err
 }
 
 //创建目录
@@ -411,17 +382,17 @@ func ContrastDirMD5(Local []string, Backup []string, DirHead string) (Dir []stri
 }
 
 //本地的文件夹初始化
-func DirInitLocal() (SrcDir string, BuildDir string, Suffix string) {
-	SrcDir = "F:/Test/Local"
-	BuildDir = ""
+func DirInitLocal() (Local string, Suffix string) {
+	Local = "F:/Test/Local"
 	Suffix = ""
 	return
 }
 
 //远端的文件夹初始化
-func DirInitRemote() (SrcDir string, BuildDir string, Suffix string) {
-	SrcDir = "F:/Test/Backup"
-	BuildDir = ""
+func DirInitRemote() (Local string, Backup string, Suffix string) {
+	Local = "F:/Test/Backup"
+	// Backup = "F:/Test/1234567"
+	Backup = "F:/Test/Local"
 	Suffix = ""
 	return
 }
