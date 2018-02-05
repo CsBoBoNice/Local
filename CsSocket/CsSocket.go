@@ -111,8 +111,9 @@ func read(conn net.Conn, num uint64) ([]byte, error) {
 	readBytes := make([]byte, int(num)) //2G内存
 	var buffer bytes.Buffer
 	var readSize uint64 = 0
-	var printNum int = 0
-	// var LastNum int = 0
+	var LastNum uint64 = 0
+	printNumChan := make(chan int, 1)
+	printNumChan <- 0
 	for {
 		conn.SetReadDeadline(time.Now().Add(3 * time.Second)) //3秒内接收不到数据就超时
 		n, err := conn.Read(readBytes[:int(num-readSize)])
@@ -122,19 +123,28 @@ func read(conn net.Conn, num uint64) ([]byte, error) {
 		}
 
 		if n > 0 {
-			for i := 0; i < printNum; i++ { // 退格\b刚才输出多少就退格多少
-				fmt.Printf("\b")
-			}
+
 			buffer.Write(readBytes[:n])
 			readSize = readSize + uint64(n)
 
-			if num >= 1024*1024*8 { // 只有当文件大于8M时才显示进度
-				printNum, _ = fmt.Printf("Receiving date: %0.2f%% (%d//%d)",
-					(1.0-float32(num-readSize)/float32(num))*100, readSize, num)
+			if readSize-LastNum >= 1024*1024 { //只有变化超过1M才显示
+				LastNum = readSize
+				go func(printNumChan chan int) {
+					var printNum int
+					printNum = <-printNumChan
+					for i := 0; i < printNum; i++ { // 退格\b刚才输出多少就退格多少
+						fmt.Printf("\b")
+					}
+					if num >= 1024*1024*8 { // 只有当文件大于8M时才显示进度
+						printNum, _ = fmt.Printf("Receiving date: %0.2f%% (%d/%d)",
+							(1.0-float32(num-readSize)/float32(num))*100, readSize, num)
+						printNumChan <- printNum
+					}
+				}(printNumChan)
 			}
 
-			if uint64(readSize) >= num {
-				// fmt.Printf("接收正确\n")
+			if uint64(readSize) >= num { //接收正确
+				printNum := <-printNumChan
 				for i := 0; i < printNum; i++ { // 退格\b刚才输出多少就退格多少
 					fmt.Printf("\b")
 				}

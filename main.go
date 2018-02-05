@@ -29,7 +29,8 @@ func main() {
 	go scanfExit(chanServer)
 	<-chanServer
 	fmt.Println("任务完成")
-	CsDir.DeleteDir(CsDir.JointDir2(SrcDir, BackupDir))
+	// CsDir.DeleteDir(CsDir.JointDir2(SrcDir, BackupDir))	//测试用，将传过来的文件删除
+
 	// time.Sleep(10 * time.Second)
 
 }
