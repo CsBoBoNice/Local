@@ -42,7 +42,7 @@ func (walkdir *Walkdir_s) WalkDirFile(SrcDir string, Suffix string) (err error) 
 	if ok { //目录存在
 		// fmt.Printf("%s目录存在!\n", walkdir.srcDir)
 	} else { //目录不存在
-		fmt.Printf("%s目录不存在!\n", walkdir.srcDir)
+		fmt.Printf("\t%s目录不存在!\n", walkdir.srcDir)
 		MakeDir(walkdir.srcDir) //目录不存在则创建目录
 		return                  //目录不存在，遍历目录就没有必要了，直接返回
 	}
@@ -182,7 +182,12 @@ func UnpackFileMD5(data string) ([16]byte, string) {
 	return Md5, buffer.String()
 }
 
-//将共享路径头提取出来
+/*
+	将共享路径头提取出来
+例：
+	name = /abc/123/def/321
+	DirHead = /abc/123/def
+*/
 func GetDirHead(name string) (DirHead string) {
 	catstring := filepath.Dir(name) //filepath.Dir可以将最后一个文件夹去掉
 	// fmt.Println("bi", name)
@@ -194,7 +199,13 @@ func GetDirHead(name string) (DirHead string) {
 	return
 }
 
-//获取目标目录
+/*
+	获取目标目录
+例：
+	jointDir = /abc/123
+	TargetDir = /def/321
+	Dir = /abc/123/def/321
+*/
 func GetTargetDir(SrcDir string, DirHead string) (Dir string) {
 	SrcDirByte := []byte(SrcDir)
 	DirHeadLen := len(DirHead)
@@ -203,7 +214,13 @@ func GetTargetDir(SrcDir string, DirHead string) (Dir string) {
 	return
 }
 
-//拼接文件夹
+/*
+	拼接文件夹
+例：
+	jointDir = /abc/123
+	TargetDir = /def/321
+	Dir = /abc/123/def/321
+*/
 func JointDir(jointDir string, TargetDir string) (Dir string) {
 	jointDirByte := []byte(jointDir)
 	var va byte = '\\'
@@ -212,6 +229,20 @@ func JointDir(jointDir string, TargetDir string) (Dir string) {
 	} else {
 		Dir = jointDir + TargetDir
 	}
+	return
+}
+
+//将前一个目录与后一个的最后一个目录拼接
+//拼接文件夹
+/*
+例：
+	jointDir = /abc/123
+	TargetDir = /def/321/aaa
+	Dir = /abc/123/aaa
+*/
+func JointDir2(jointDir string, TargetDir string) (Dir string) {
+	targetDir := GetTargetDir(TargetDir, GetDirHead(TargetDir))
+	Dir = JointDir(jointDir, targetDir)
 	return
 }
 
@@ -304,7 +335,7 @@ func MakeDir(name string) (err error) {
 	if err != nil {
 		fmt.Printf("%s\n", err)
 	} else {
-		// fmt.Print("Create Directory OK!\n")
+		fmt.Printf("创建目录%s\n", name)
 	}
 	return
 }
@@ -383,7 +414,7 @@ func ContrastDirMD5(Local []string, Backup []string, DirHead string) (Dir []stri
 
 //本地的文件夹初始化
 func DirInitLocal() (Local string, Suffix string) {
-	Local = "F:/Test/Local"
+	Local = ""
 	Suffix = ""
 	return
 }
@@ -391,8 +422,8 @@ func DirInitLocal() (Local string, Suffix string) {
 //远端的文件夹初始化
 func DirInitRemote() (Local string, Backup string, Suffix string) {
 	Local = "F:/Test/Backup"
-	// Backup = "F:/Test/1234567"
-	Backup = "F:/Test/Local"
+	Backup = "F:/Test/1234567"
+	// Backup = "F:/Test/Local"
 	Suffix = ""
 	return
 }

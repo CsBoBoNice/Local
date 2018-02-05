@@ -111,18 +111,33 @@ func read(conn net.Conn, num uint64) ([]byte, error) {
 	readBytes := make([]byte, int(num)) //2G内存
 	var buffer bytes.Buffer
 	var readSize uint64 = 0
+	var printNum int = 0
+	// var LastNum int = 0
 	for {
+		conn.SetReadDeadline(time.Now().Add(3 * time.Second)) //3秒内接收不到数据就超时
 		n, err := conn.Read(readBytes[:int(num-readSize)])
 		if err != nil && err != io.EOF { //io.EOF在网络编程中表示对端把链接关闭了。
 			log.Fatal(err)
 			return buffer.Bytes(), err
 		}
+
 		if n > 0 {
-			// fmt.Printf("\t 接收到 %d\t 还差 %d\n", n, (num - readSize))
+			for i := 0; i < printNum; i++ { // 退格\b刚才输出多少就退格多少
+				fmt.Printf("\b")
+			}
 			buffer.Write(readBytes[:n])
 			readSize = readSize + uint64(n)
+
+			if num >= 1024*1024*8 { // 只有当文件大于8M时才显示进度
+				printNum, _ = fmt.Printf("Receiving date: %0.2f%% (%d//%d)",
+					(1.0-float32(num-readSize)/float32(num))*100, readSize, num)
+			}
+
 			if uint64(readSize) >= num {
 				// fmt.Printf("接收正确\n")
+				for i := 0; i < printNum; i++ { // 退格\b刚才输出多少就退格多少
+					fmt.Printf("\b")
+				}
 				break
 			}
 		}
@@ -182,17 +197,21 @@ func ServerGo(network, address string) {
 	listener, err := net.Listen(network, address)
 	InitTime()
 	if err != nil {
-		printServerLog("Listen Error: %s", err)
+		printServerLog("监听错误 Listen Error: %s", err)
 		return
 	}
-	defer listener.Close()
-	printServerLog("Got listener for the server. (local address: %s)", listener.Addr())
+	defer func() {
+		printServerLog("关闭服务器 (服务器地址: %s)", listener.Addr())
+		listener.Close()
+	}()
+
+	printServerLog("得到服务器侦听器 Got listener for the server. (服务器本地地址: %s)", listener.Addr())
 	for {
 		conn, err := listener.Accept() // 阻塞直至新连接到来。
 		if err != nil {
 			printServerLog("Accept Error: %s", err)
 		}
-		printServerLog("Established a connection with a client application. (remote address: %s)",
+		printServerLog("建立与客户端应用程序的连接. (客户端地址: %s)",
 			conn.RemoteAddr())
 		go handleConn(conn)
 	}
@@ -204,9 +223,11 @@ func handleConn(conn net.Conn) {
 		conn.Close()
 	}()
 	// conn.SetDeadline(time.Now().Add(15 * time.Second))
-	// SrcDir, _ := CsDir.DirInitLocal() //初始化本地读取文件夹，远端创建的文件夹，还有要查找的文件后缀
-	bytedir, _ := ReadAgreement(conn) //接收远端的所有目标文件目录
+	// SrcDir, _ := CsDir.DirInitLocal() //初始化本地读取文件夹，客户端创建的文件夹，还有要查找的文件后缀
+	printServerLog("正在接收客户端需要从本地获取的文件地址. (客户端地址: %s)", conn.RemoteAddr())
+	bytedir, _ := ReadAgreement(conn) //接收客户端的目标文件目录
 	SrcDir := string(bytedir)         //解读出本地需要遍历的目录
+	printServerLog("户端需要从本地获取的文件地址:%s.", SrcDir)
 	ok, err := CsDir.IsDir(SrcDir)
 	if err != nil {
 		WriteAgreement(conn, []byte("The file can't be found!")) //本地找不到这个文件或目录
@@ -214,11 +235,12 @@ func handleConn(conn net.Conn) {
 		return
 	}
 	if ok != true {
+		printServerLog("%s是单一文件.", SrcDir)
 		WriteAgreement(conn, []byte("Single file!")) //单一文件
 		var com []byte
 		var command string
 		for {
-			com, _ = ReadAgreement(conn) //接收远端的所有目标目录
+			com, _ = ReadAgreement(conn) //接收客户端的所有目标目录
 			command = string(com)
 			switch command {
 			case "ok return!":
@@ -228,53 +250,57 @@ func handleConn(conn net.Conn) {
 				md5V := SingleMd5[:]
 				WriteAgreement(conn, md5V) //先将Md5码发过去
 			case "Give me file!":
-				WriteAgreement(conn, CsDir.ReadFileAll(SrcDir)) //将文件数据发给远端
+				WriteAgreement(conn, CsDir.ReadFileAll(SrcDir)) //将文件数据发给客户端
 
 			}
 		}
 
 	} else {
+		printServerLog("%s是目录文件.", SrcDir)
 		WriteAgreement(conn, []byte("This is a Dir!")) //文件夹
 	}
 	var local CsDir.Walkdir_s
-	local.WalkDirFile(SrcDir, "")                                //遍历本地目录
-	WriteAgreement(conn, CsDir.PackSliceString(local.TargetDir)) //将本地的所有目标目录发给远端
-
-	WriteAgreement(conn, CsDir.PackSliceString(local.FileMD5)) //将本地的 包含MD5码的文件目录 发给远端
-
-	dir, _ := ReadAgreement(conn)       //接收远端的所有目标文件目录
+	printServerLog("遍历本地目录%s.", SrcDir)
+	local.WalkDirFile(SrcDir, "") //遍历本地目录
+	printServerLog("将本地的所有目标目录发给客户端")
+	WriteAgreement(conn, CsDir.PackSliceString(local.TargetDir)) //将本地的所有目标目录发给客户端
+	printServerLog("将本地的 包含MD5码的文件目录 发给客户端")
+	WriteAgreement(conn, CsDir.PackSliceString(local.FileMD5)) //将本地的 包含MD5码的文件目录 发给客户端
+	printServerLog("接收客户端的所有目标文件目录")
+	dir, _ := ReadAgreement(conn) //接收客户端的所有目标文件目录
+	printServerLog("解析出所有目标文件目录FileMD5")
 	Dir := CsDir.UnpackSliceString(dir) //解析出所有目标文件目录FileMD5
 
 	for _, v := range Dir {
-		WriteAgreement(conn, []byte(v))                                           //将文件目录发给远端
-		WriteAgreement(conn, CsDir.ReadFileAll(CsDir.JointDir(local.DirHead, v))) //将文件数据发给远端
+		printServerLog("将文件%s发给客户端", v)
+		WriteAgreement(conn, []byte(v))                                           //将文件目录发给客户端
+		WriteAgreement(conn, CsDir.ReadFileAll(CsDir.JointDir(local.DirHead, v))) //将文件数据发给客户端
 	}
-	WriteAgreement(conn, []byte("The transfer file is finished!")) //将结束标志发给远端
+	printServerLog("将结束标志发给客户端")
+	WriteAgreement(conn, []byte("The transfer file is finished!")) //将结束标志发给客户端
 	return
 
 }
 
-func ClientGo(id int, network string, address string) {
+func ClientGo(id int, network string, address string, SrcDir string, BackupDir string) {
 	//向指定的网络地址发送链接建立申请，并堵塞一段时间，超时则err!=nil
 	conn, err := net.DialTimeout(network, address, 2*time.Second)
 	if err != nil {
-		printClientLog(id, "Dial Error: %s", err)
+		printClientLog(id, "拨号错误Dial Error: %s", err)
 		return
 	}
 	defer func() {
-		printClientLog(id, "Client close. (remote address: %s)", conn.LocalAddr())
+		printClientLog(id, "关闭客户端 Client close. (本地客户端地址: %s)", conn.LocalAddr())
 		conn.Close()
 	}()
 
-	printClientLog(id, "Connected to server. (remote address: %s, local address: %s)",
+	printClientLog(id, "连接到服务器 Connected to server. (服务器地址: %s, 本地客户端地址: %s)",
 		conn.RemoteAddr(), conn.LocalAddr())
 
-	//初始化本地读取文件夹，远端需要备份的文件夹，还有要查找的文件后缀
-	SrcDir, BackupDir, _ := CsDir.DirInitRemote()
+	printClientLog(id, "将需要从服务器获取的文件发送到服务器")
+	WriteAgreement(conn, []byte(BackupDir)) //将需要从服务器获取的文件发送到服务器
 
-	WriteAgreement(conn, []byte(BackupDir)) //将服务器端需要备份的文件夹发过去
-
-	com, _ := ReadAgreement(conn) //接收远端的所有目标目录
+	com, _ := ReadAgreement(conn) //接收服务器的所有目标目录
 	command := string(com)
 	if command == "The file can't be found!" {
 		printClientLog(id, "服务器找不到这个文件)")
@@ -282,8 +308,9 @@ func ClientGo(id int, network string, address string) {
 	}
 
 	if command == "Single file!" {
-		targetDir := CsDir.GetTargetDir(BackupDir, CsDir.GetDirHead(BackupDir))
-		SingleFile := CsDir.JointDir(SrcDir, targetDir)
+		// targetDir := CsDir.GetTargetDir(BackupDir, CsDir.GetDirHead(BackupDir))
+		// SingleFile := CsDir.JointDir(SrcDir, targetDir)
+		SingleFile := CsDir.JointDir2(SrcDir, BackupDir)
 		ok, _ := CsDir.PathExists(SingleFile)
 		if ok {
 			WriteAgreement(conn, []byte("Give me MD5!")) //让服务器将MD5码发过来
@@ -310,9 +337,9 @@ func ClientGo(id int, network string, address string) {
 	var local CsDir.Walkdir_s
 	var Backup CsDir.Walkdir_s
 	var LocalNow CsDir.Walkdir_s
-	printClientLog(id, "正在接收远端的所有目标目录")
-	targetDir, err := ReadAgreement(conn) //接收远端的所有目标目录
-	printClientLog(id, "正在解析远端的所有目标目录")
+	printClientLog(id, "正在接收服务器的所有目标目录")
+	targetDir, err := ReadAgreement(conn) //接收服务器的所有目标目录
+	printClientLog(id, "正在解析服务器的所有目标目录")
 	Backup.TargetDir = CsDir.UnpackSliceString(targetDir) //解析出所有目标目录
 
 	if len(Backup.TargetDir) <= 0 {
@@ -322,20 +349,20 @@ func ClientGo(id int, network string, address string) {
 	printClientLog(id, "正在遍历本地目录")
 	local.WalkDirFile(SrcDirNow, "") //遍历本地目录
 
-	//对比本地目录与远端目录，以发送过来的远端目录为基准，将多余的，目录删除，不足的目录新建
+	//对比本地目录与服务器目录，以发送过来的服务器目录为基准，将多余的，目录删除，不足的目录新建
 	CsDir.ContrastDir(local.TargetDir, Backup.TargetDir, local.DirHead)
 	printClientLog(id, "正在遍历本地目录")
 	LocalNow.WalkDirFile(SrcDirNow, "") //遍历本地目录
-	printClientLog(id, "正在接收远端的所有目标文件目录")
-	targetFile, err := ReadAgreement(conn) //接收远端的所有目标文件目录
+	printClientLog(id, "正在接收服务器的所有目标文件目录")
+	targetFile, err := ReadAgreement(conn) //接收服务器的所有目标文件目录
 	printClientLog(id, "正在解析出所有目标文件目录FileMD5")
 	Backup.FileMD5 = CsDir.UnpackSliceString(targetFile) //解析出所有目标文件目录FileMD5
 
 	//解析出包含MD5码的文件目录，格式为MD5+TargetFile
 	//将没有匹配文件的 与 MD5码与文件不同的目录找出
 	Dir := CsDir.ContrastDirMD5(LocalNow.FileMD5, Backup.FileMD5, LocalNow.DirHead)
-	printClientLog(id, "正在将需要新建的文件发给远端")
-	WriteAgreement(conn, CsDir.PackSliceString(Dir)) //将没有匹配文件的 与 MD5码与文件不同的目录找出发给远端
+	printClientLog(id, "正在将需要新建的文件发给服务器")
+	WriteAgreement(conn, CsDir.PackSliceString(Dir)) //将没有匹配文件的 与 MD5码与文件不同的目录找出发给服务器
 
 	var dirName string
 	for {
