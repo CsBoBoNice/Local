@@ -14,23 +14,27 @@ import (
 	"time"
 )
 
-type Data struct {
-	Datahead     DataHead
-	DataHeadbuff []byte
-	DataBuff     []byte
+type Data struct { //一个数据包的格式
+	Datahead     DataHead //数据头，共24字节
+	DataHeadbuff []byte   //打包后的数据头，数据长度(DataSize) + 数据MD5码(MD5Byte)
+	DataBuff     []byte   //真正的数据
 }
 
-type DataHead struct {
-	DataSize uint64
-	MD5Byte  [16]byte
+type DataHead struct { //数据头，共24字节
+	DataSize uint64   //数据长度8个字节
+	MD5Byte  [16]byte //MD5码16字节
 }
 
 var startTime time.Time
 
+//初始化计时时间
 func InitTime() {
 	startTime = time.Now()
 }
 
+//数据打包，协议打包
+//最后将 Datas.Datahead.DataSize，与 Datas.Datahead.MD5Byte
+//打包成 Datas.DataHeadbuff
 func (Datas *Data) PackData() {
 	Datas.Datahead.DataSize = uint64(len(Datas.DataBuff))
 	Datas.Datahead.MD5Byte = md5.Sum(Datas.DataBuff)
@@ -44,10 +48,15 @@ func (Datas *Data) PackData() {
 	// fmt.Println(Datas.DataHeadbuff)
 }
 
+//数据解包，协议解包
+//最后将 Datas.DataHeadbuff
+//解压成 Datas.Datahead.DataSize，与 Datas.Datahead.MD5Byte
 func (Datas *Data) UnpackData(date []byte) {
 	Datas.DataHeadbuff = date
-	if len(date) <= 8 {
-		fmt.Printf("error 123123123!")
+	if len(date) < 24 {
+		fmt.Printf("error： 数据格式不对，数据头不足24字节")
+		Datas.Datahead.DataSize = 0
+		return
 	}
 	Datas.Datahead.DataSize = ByteToUint64(Datas.DataHeadbuff[0:8])
 	for i, d := range Datas.DataHeadbuff[8:] {
@@ -55,18 +64,25 @@ func (Datas *Data) UnpackData(date []byte) {
 	}
 }
 
+// 切片[]byte 转uint64
 func ByteToUint64(date []byte) (i uint64) {
+	if len(date) < 8 {
+		fmt.Printf("error： 数据不足8字节")
+		i = 0
+		return
+	}
 	i = uint64(binary.BigEndian.Uint64(date[0:8]))
-	// fmt.Println(i)
 	return
 }
 
+// uint64 转 切片[]byte
 func Uint64ToByte(i uint64) (date []byte) {
 	date = make([]byte, 8)
 	binary.BigEndian.PutUint64(date, uint64(i))
 	return
 }
 
+//输出日志
 func printLog(role string, sn int, format string, args ...interface{}) {
 	if !strings.HasSuffix(format, "\n") {
 		format += "\n"
@@ -75,16 +91,14 @@ func printLog(role string, sn int, format string, args ...interface{}) {
 	InitTime()
 }
 
+//Server输出日志
 func printServerLog(format string, args ...interface{}) {
 	printLog("Server", 0, format, args...)
 }
 
+//Client输出日志
 func printClientLog(sn int, format string, args ...interface{}) {
 	printLog("Client", sn, format, args...)
-}
-
-func readHead(conn net.Conn) ([]byte, error) {
-	return read(conn, 24)
 }
 
 // func read(conn net.Conn, num uint64) ([]byte, error) {
@@ -107,8 +121,14 @@ func readHead(conn net.Conn) ([]byte, error) {
 // 	return buffer.Bytes(), nil
 // }
 
+//读取数据头
+func readHead(conn net.Conn) ([]byte, error) {
+	return read(conn, 24)
+}
+
+//socket读取操作
 func read(conn net.Conn, num uint64) ([]byte, error) {
-	readBytes := make([]byte, int(num)) //2G内存
+	readBytes := make([]byte, int(num))
 	var buffer bytes.Buffer
 	var readSize uint64 = 0
 	var LastNum uint64 = 0
@@ -127,20 +147,23 @@ func read(conn net.Conn, num uint64) ([]byte, error) {
 			buffer.Write(readBytes[:n])
 			readSize = readSize + uint64(n)
 
-			if readSize-LastNum >= 1024*1024 { //只有变化超过1M才显示
-				LastNum = readSize
-				go func(printNumChan chan int) {
-					var printNum int
-					printNum = <-printNumChan
-					for i := 0; i < printNum; i++ { // 退格\b刚才输出多少就退格多少
-						fmt.Printf("\b")
-					}
-					if num >= 1024*1024*8 { // 只有当文件大于8M时才显示进度
+			if num >= 1024*1024*8 { // 只有当文件大于8M时才显示进度
+				if readSize-LastNum >= 1024*1024 { //只有变化超过1M才显示
+					LastNum = readSize
+					go func(printNumChan chan int) {
+						var printNum int
+						printNum = <-printNumChan
+						for i := 0; i < printNum; i++ { // 退格\b刚才输出多少就退格多少
+							fmt.Printf("\b")
+						}
+
 						printNum, _ = fmt.Printf("Receiving date: %0.2f%% (%d/%d)",
 							(1.0-float32(num-readSize)/float32(num))*100, readSize, num)
+
 						printNumChan <- printNum
-					}
-				}(printNumChan)
+
+					}(printNumChan)
+				}
 			}
 
 			if uint64(readSize) >= num { //接收正确
@@ -156,6 +179,7 @@ func read(conn net.Conn, num uint64) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
+//socket写入操作
 func write(conn net.Conn, date []byte) (int, error) {
 	var buffer bytes.Buffer
 	buffer.Write(date)
@@ -293,6 +317,7 @@ func handleConn(conn net.Conn) {
 }
 
 func ClientGo(id int, network string, address string, SrcDir string, BackupDir string) {
+	InitTime()
 	//向指定的网络地址发送链接建立申请，并堵塞一段时间，超时则err!=nil
 	conn, err := net.DialTimeout(network, address, 2*time.Second)
 	if err != nil {

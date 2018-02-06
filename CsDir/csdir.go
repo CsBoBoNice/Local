@@ -422,8 +422,8 @@ func DirInitLocal() (Local string, Suffix string) {
 //远端的文件夹初始化
 func DirInitRemote() (Local string, Backup string, Suffix string) {
 	Local = "F:/Test/Backup"
-	Backup = "F:/Test/1234567"
-	// Backup = "F:/Test/Local"
+	// Backup = "F:/Test/1234567"
+	Backup = "F:/Test/Local"
 	Suffix = ""
 	return
 }

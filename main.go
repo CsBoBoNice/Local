@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	CsDir "github.com/CsBoBoNice/Local/CsDir"
+	// CsDir "github.com/CsBoBoNice/Local/CsDir"
 	CsSocket "github.com/CsBoBoNice/Local/CsSocket"
 	"runtime"
-	"time"
+	// "time"
 )
 
 const (
@@ -20,11 +20,11 @@ func main() {
 
 	fmt.Println("nice day!")
 	go CsSocket.ServerGo(SERVER_NETWORK, SERVER_ADDRESS)
-	time.Sleep(500 * time.Millisecond)
+	// time.Sleep(500 * time.Millisecond)
 
-	//初始化本地读取文件夹，服务器需要备份的文件夹，还有要查找的文件后缀
-	SrcDir, BackupDir, _ := CsDir.DirInitRemote()
-	go CsSocket.ClientGo(1, SERVER_NETWORK, SERVER_ADDRESS, SrcDir, BackupDir)
+	// //初始化本地读取文件夹，服务器需要备份的文件夹，还有要查找的文件后缀
+	// SrcDir, BackupDir, _ := CsDir.DirInitRemote()
+	// go CsSocket.ClientGo(1, SERVER_NETWORK, SERVER_ADDRESS, SrcDir, BackupDir)
 
 	go scanfExit(chanServer)
 	<-chanServer
